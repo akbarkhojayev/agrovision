@@ -1,11 +1,10 @@
-"""Open-Meteo ERA5 API: tarixiy ob-havo va joriy tuproq ma'lumotlari."""
 import httpx
 from datetime import datetime, timedelta
 from statistics import mean
 
 
 def fetch_data(lat: float, lng: float) -> tuple[dict, dict]:
-    end_dt   = datetime.now() - timedelta(days=5)   # ERA5 ~5 kunlik kechikish
+    end_dt   = datetime.now() - timedelta(days=5)
     start_dt = end_dt - timedelta(days=365)
 
     with httpx.Client(timeout=40) as client:
@@ -45,7 +44,6 @@ def fetch_data(lat: float, lng: float) -> tuple[dict, dict]:
 
 
 def process_monthly(archive: dict) -> list[dict]:
-    """Kunlik ERA5 ma'lumotlarni oylar bo'yicha guruhlaydi."""
     daily   = archive.get("daily", {})
     times   = daily.get("time", [])
     temps   = daily.get("temperature_2m_mean", [])
@@ -83,7 +81,6 @@ def process_monthly(archive: dict) -> list[dict]:
 
 
 def extract_soil(soil_json: dict) -> dict:
-    """Soatlik tuproq ma'lumotidan oxirgi qiymatlarni oladi."""
     h = soil_json.get("hourly", {})
 
     def last(lst):

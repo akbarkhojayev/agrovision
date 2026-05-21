@@ -1,4 +1,3 @@
-"""Groq LLM yordamida agronomi tahlili."""
 import json
 import re
 

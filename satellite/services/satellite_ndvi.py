@@ -1,4 +1,3 @@
-"""Copernicus Data Space (Sentinel-2 L2A) dan haqiqiy NDVI va EVI olish."""
 import httpx
 from datetime import datetime, timedelta
 
@@ -47,14 +46,10 @@ def get_token(username: str, password: str) -> str:
 
 
 def fetch_monthly_ndvi(lat: float, lng: float, token: str) -> dict:
-    """
-    So'nggi 12 oy uchun haqiqiy Sentinel-2 NDVI va EVI qaytaradi.
-    Natija: {"2024-05": {"ndvi": 0.45, "evi": 0.39}, ...}
-    Bulutli yoki ma'lumot yo'q oylar natijaga kirmaydi.
-    """
+
     end_dt   = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     start_dt = end_dt - timedelta(days=365)
-    delta    = 0.001  # ~100 metr atrofida nuqta
+    delta    = 0.001
 
     payload = {
         "input": {

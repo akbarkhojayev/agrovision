@@ -1,7 +1,56 @@
+from django.contrib.auth.models import User
 from django.db import models
 
 
+class Field(models.Model):
+    user            = models.ForeignKey(
+        User, null=True, blank=True,
+        on_delete=models.CASCADE,
+        related_name='fields',
+        verbose_name="Foydalanuvchi",
+    )
+    created_at      = models.DateTimeField(auto_now_add=True, verbose_name="Yaratilgan")
+    updated_at      = models.DateTimeField(auto_now=True,     verbose_name="Yangilangan")
+    name            = models.CharField(max_length=200, blank=True, verbose_name="Dala nomi")
+    crop            = models.CharField(max_length=100, default='', blank=True, verbose_name="Ekin turi")
+    coordinates     = models.JSONField(verbose_name="Polygon koordinatalari")
+    center_lat      = models.FloatField(verbose_name="Markaz kenglik")
+    center_lng      = models.FloatField(verbose_name="Markaz uzunlik")
+    area_ha         = models.FloatField(null=True, blank=True, verbose_name="Maydon (ha)")
+    last_irrigation = models.DateField(null=True, blank=True, verbose_name="So'nggi sug'orish")
+    water_cycle     = models.PositiveSmallIntegerField(default=7, verbose_name="Sug'orish davri (kun)")
+    notes           = models.TextField(blank=True, verbose_name="Izoh")
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Dala"
+        verbose_name_plural = "Dalalar"
+
+    def __str__(self):
+        label = self.name or f"Dala {self.pk}"
+        return f"{label} — {self.crop} ({self.center_lat:.3f}, {self.center_lng:.3f})"
+
+    @property
+    def area_sotix(self):
+        if self.area_ha is None:
+            return None
+        return round(self.area_ha * 100, 1)
+
+
 class AnalysisResult(models.Model):
+    user          = models.ForeignKey(
+        User, null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='analyses',
+        verbose_name="Foydalanuvchi",
+    )
+    field         = models.ForeignKey(
+        Field,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='analyses',
+        verbose_name="Dala",
+    )
     created_at    = models.DateTimeField(auto_now_add=True)
     name          = models.CharField(max_length=200, blank=True, verbose_name="Nomi")
     center_lat    = models.FloatField(verbose_name="Kenglik")

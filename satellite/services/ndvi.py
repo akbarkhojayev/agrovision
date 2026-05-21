@@ -2,7 +2,6 @@
 from statistics import mean, stdev
 
 
-# Markaziy Osiyo iqlimiga moslashtirilgan oylik bazaviy NDVI
 _SEASONAL = {
     1: 0.06, 2: 0.11, 3: 0.30, 4: 0.54, 5: 0.68, 6: 0.73,
     7: 0.70, 8: 0.64, 9: 0.50, 10: 0.33, 11: 0.16, 12: 0.06,
@@ -25,10 +24,7 @@ def estimate_evi(ndvi: float) -> float:
 
 
 def drought_index(monthly: list[dict]) -> float:
-    """
-    Standartlashtirilgan yog'in-evapotranspiratsiya indeksi.
-    Qiymat: -3 (juda quruq) ... +3 (juda nam).
-    """
+
     deficits = [m["precip"] - m["et"] for m in monthly]
     if len(deficits) < 2:
         return 0.0
@@ -44,11 +40,7 @@ def enrich_monthly(
     monthly: list[dict],
     real_ndvi: dict | None = None,
 ) -> tuple[list[dict], float]:
-    """
-    Har bir oyga NDVI, EVI qo'shadi; Drought Index qaytaradi.
-    real_ndvi = {"2024-05": {"ndvi": 0.45, "evi": 0.39}, ...} bo'lsa,
-    haqiqiy sun'iy yo'ldosh qiymatlari ishlatiladi; aks holda formula.
-    """
+
     di = drought_index(monthly)
     for m in monthly:
         mn = int(m["month"][5:7])

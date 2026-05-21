@@ -1,4 +1,3 @@
-"""AgroMonitoring — NDVI olish (EVI/NDWI bu API da mavjud emas)."""
 import httpx
 from datetime import datetime, timedelta
 
@@ -25,11 +24,6 @@ def _small_polygon(lat: float, lng: float) -> dict:
 
 
 def fetch_indices(lat: float, lng: float, api_key: str) -> dict:
-    """
-    AgroMonitoring dan haqiqiy Sentinel-2 NDVI oladi.
-    EVI = NDVI * 0.87 (taxminiy), NDWI = None (API da mavjud emas).
-    Natija: {"2024-05": {"ndvi": 0.45, "evi": 0.39, "ndwi": None}, ...}
-    """
     p        = {"appid": api_key}
     end_ts   = int(datetime.utcnow().timestamp())
     start_ts = int((datetime.utcnow() - timedelta(days=365)).timestamp())
@@ -64,8 +58,11 @@ def _group_by_month(raw: list) -> dict:
         mean_val = entry.get("data", {}).get("mean")
         if mean_val is None:
             continue
+        fv = float(mean_val)
+        if fv != fv:  # NaN tekshiruvi
+            continue
         key = datetime.utcfromtimestamp(entry["dt"]).strftime("%Y-%m")
-        acc.setdefault(key, []).append(float(mean_val))
+        acc.setdefault(key, []).append(fv)
 
     return {
         month: {
