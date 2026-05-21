@@ -1,0 +1,33 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredPackages">
+        <list>
+          <option value="openai" />
+          <option value="groq" />
+          <option value="gunicorn" />
+          <option value="django" />
+          <option value="djangorestframework" />
+          <option value="drf-yasg" />
+          <option value="djangorestframework-simplejwt" />
+          <option value="Pillow" />
+          <option value="django-cors-headers" />
+          <option value="django-jazzmin" />
+          <option value="psycopg2-binary" />
+          <option value="celery" />
+          <option value="redis" />
+          <option value="django-tenants" />
+        </list>
+      </option>
+    </inspection_tool>
+    <inspection_tool class="PyStubPackagesAdvertiser" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredPackages">
+        <list>
+          <option value="djangorestframework" />
+          <option value="celery" />
+        </list>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>

@@ -1,0 +1,1133 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>TerraSat — Sun'iy yo'ldosh tahlil platformasi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+/* ── TOKENS ── */
+:root {
+  --bg:       #060a10;
+  --sf:       #0c1420;
+  --sf2:      #111c2e;
+  --sf3:      #162335;
+  --bd:       #1a2b40;
+  --bd2:      #243649;
+  --accent:   #3b82f6;
+  --green:    #10b981;
+  --green2:   #059669;
+  --warn:     #f59e0b;
+  --red:      #ef4444;
+  --purple:   #8b5cf6;
+  --text:     #e2e8f0;
+  --text2:    #cbd5e1;
+  --muted:    #64748b;
+  --muted2:   #475569;
+  --hist-w:   272px;
+  --panel-w:  430px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Space Grotesk',sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden;display:flex;flex-direction:column}
+
+/* ── TOPBAR ── */
+.topbar{height:52px;background:var(--sf);border-bottom:1px solid var(--bd);display:flex;align-items:center;padding:0 14px;gap:8px;z-index:1000;flex-shrink:0}
+.logo{display:flex;align-items:center;gap:8px;text-decoration:none}
+.logo-icon{width:30px;height:30px;background:linear-gradient(135deg,#10b981,#3b82f6);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+.logo-text{font-size:15px;font-weight:700;letter-spacing:-.4px;color:var(--text)}
+.logo-text span{color:var(--green)}
+.divider{width:1px;height:22px;background:var(--bd);margin:0 4px;flex-shrink:0}
+.tb-btn{display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:6px;border:1px solid var(--bd);background:transparent;color:var(--muted);font-family:inherit;font-size:12px;cursor:pointer;transition:all .15s;white-space:nowrap;flex-shrink:0}
+.tb-btn:hover{background:var(--sf2);border-color:var(--bd2);color:var(--text2)}
+.tb-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.tb-btn.g.active{background:var(--green);border-color:var(--green)}
+.tb-btn.danger:hover,.tb-btn.danger.active{background:var(--red);border-color:var(--red);color:#fff}
+.tb-spacer{flex:1}
+.live-badge{display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--muted);white-space:nowrap}
+.dot-live{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* ── LAYOUT ── */
+.main{flex:1;display:flex;overflow:hidden;position:relative}
+
+/* ── HISTORY SIDEBAR ── */
+.hist-sidebar{width:var(--hist-w);min-width:var(--hist-w);background:var(--sf);border-right:1px solid var(--bd);display:flex;flex-direction:column;transition:width .25s,min-width .25s;overflow:hidden;z-index:50}
+.hist-sidebar.closed{width:0;min-width:0}
+.hist-head{padding:12px 14px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.hist-head-title{font-size:12px;font-weight:600;color:var(--text2);display:flex;align-items:center;gap:6px}
+.hist-count-badge{background:var(--accent);color:#fff;font-size:10px;font-weight:600;padding:1px 7px;border-radius:99px}
+.hist-toggle-btn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:2px 4px;border-radius:4px}
+.hist-toggle-btn:hover{background:var(--sf2);color:var(--text)}
+.hist-list{flex:1;overflow-y:auto;padding:8px}
+.hist-list::-webkit-scrollbar{width:3px}
+.hist-list::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px}
+.hist-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:160px;color:var(--muted);gap:8px;text-align:center}
+.hist-empty .ico{font-size:28px;opacity:.3}
+.hist-empty p{font-size:11px;line-height:1.5;max-width:160px}
+.hist-item{background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:10px 10px;margin-bottom:6px;cursor:pointer;transition:border-color .15s;position:relative;overflow:hidden}
+.hist-item:hover{border-color:var(--bd2)}
+.hist-item.active-hist{border-color:var(--green);background:rgba(16,185,129,.05)}
+.hist-item-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.hist-ndvi-dot{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;flex-shrink:0}
+.hist-item-info{flex:1;min-width:0}
+.hist-item-name{font-size:11.5px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hist-item-loc{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:1px}
+.hist-item-date{font-size:10px;color:var(--muted2);margin-top:4px}
+.hist-item-actions{display:flex;gap:4px;margin-top:6px}
+.hist-act-btn{flex:1;padding:4px 0;border-radius:5px;border:1px solid var(--bd);background:transparent;color:var(--muted);font-size:11px;cursor:pointer;font-family:inherit;transition:all .15s}
+.hist-act-btn:hover{background:var(--sf3);color:var(--text)}
+.hist-act-btn.load:hover{background:rgba(59,130,246,.15);border-color:var(--accent);color:var(--accent)}
+.hist-act-btn.del:hover{background:rgba(239,68,68,.12);border-color:var(--red);color:var(--red)}
+
+/* ── MAP ── */
+#map{flex:1;cursor:crosshair}
+.leaflet-container{background:#070d18!important}
+.leaflet-control-zoom a{background:var(--sf)!important;color:var(--text)!important;border-color:var(--bd)!important}
+
+/* ── MAP HINT ── */
+.map-hint{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);z-index:999;background:rgba(12,20,32,.93);border:1px solid var(--bd);border-radius:8px;padding:8px 18px;font-size:12px;color:var(--muted);pointer-events:none;transition:opacity .3s;backdrop-filter:blur(6px);white-space:nowrap}
+.map-hint.hidden{opacity:0}
+
+/* ── ANALYSIS PANEL ── */
+.panel{width:var(--panel-w);min-width:var(--panel-w);background:var(--sf);border-left:1px solid var(--bd);display:flex;flex-direction:column;overflow:hidden;z-index:100;transition:width .25s,min-width .25s}
+.panel.closed{width:0;min-width:0}
+.panel-head{padding:12px 16px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.panel-title{font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px}
+.panel-title .dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green)}
+.panel-actions{display:flex;gap:4px}
+.pact-btn{display:flex;align-items:center;gap:4px;padding:4px 9px;border-radius:5px;border:1px solid var(--bd);background:transparent;color:var(--muted);font-size:11px;cursor:pointer;font-family:inherit;transition:all .15s}
+.pact-btn:hover{background:var(--sf2);color:var(--text)}
+.pact-btn:disabled{opacity:.4;cursor:not-allowed}
+.close-x{background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;line-height:1;padding:2px 6px;border-radius:4px;margin-left:4px}
+.close-x:hover{background:var(--sf2);color:var(--text)}
+
+/* ── COORDS ── */
+.coords-box{padding:10px 16px;border-bottom:1px solid var(--bd);flex-shrink:0}
+.coords-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
+.coords-list{display:flex;flex-direction:column;gap:2px;max-height:80px;overflow-y:auto}
+.coord-item{display:flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--green);background:var(--sf2);border-radius:4px;padding:3px 8px}
+.coord-num{color:var(--muted);font-size:10px;width:14px}
+.coords-area{font-size:11px;color:var(--muted);margin-top:5px}
+.coords-area span{color:var(--green);font-weight:600}
+
+/* ── ANALYZE BTN ── */
+.analyze-sec{padding:10px 16px;border-bottom:1px solid var(--bd);flex-shrink:0}
+.analyze-btn{width:100%;padding:10px 14px;background:linear-gradient(135deg,var(--green),var(--accent));color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:opacity .2s;display:flex;align-items:center;justify-content:center;gap:8px}
+.analyze-btn:hover{opacity:.88}
+.analyze-btn:disabled{background:var(--sf2);color:var(--muted);cursor:not-allowed;opacity:1}
+.spinner{width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── TABS ── */
+.tabs{display:flex;border-bottom:1px solid var(--bd);flex-shrink:0}
+.tab{flex:1;padding:8px 4px;font-size:11px;font-weight:500;text-align:center;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;transition:all .15s}
+.tab.active{color:var(--green);border-bottom-color:var(--green)}
+.tab:hover:not(.active){color:var(--text2)}
+
+/* ── RESULTS ── */
+.results{flex:1;overflow-y:auto;padding:14px 16px}
+.results::-webkit-scrollbar{width:3px}
+.results::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px}
+
+/* ── EMPTY STATE ── */
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:220px;color:var(--muted);text-align:center;gap:10px}
+.empty-state .ico{font-size:38px;opacity:.3}
+.empty-state p{font-size:12px;line-height:1.65;max-width:240px}
+
+/* ── RESULT COMPONENTS ── */
+.rsec{margin-bottom:16px}
+.rsec-t{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.rsec-t::after{content:'';flex:1;height:1px;background:var(--bd)}
+.card{background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:10px 12px;margin-bottom:8px}
+.card-t{font-size:12px;font-weight:600;color:var(--text);margin-bottom:4px;display:flex;align-items:center;gap:6px}
+.card-b{font-size:12px;color:#94a3b8;line-height:1.7}
+
+/* ── NDVI HERO ── */
+.ndvi-hero{background:var(--sf2);border:1px solid var(--bd);border-radius:12px;padding:18px 16px;margin-bottom:10px;text-align:center;position:relative;overflow:hidden}
+.ndvi-hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at top,rgba(16,185,129,.06),transparent 70%);pointer-events:none}
+.ndvi-big{font-size:56px;font-weight:700;font-family:'JetBrains Mono',monospace;line-height:1;transition:color .5s}
+.ndvi-sub{font-size:10.5px;color:var(--muted);margin-top:5px;letter-spacing:.03em}
+.ndvi-badges{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px;flex-wrap:wrap}
+.nbadge{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;padding:4px 12px;border-radius:99px}
+.nbadge-chg.up   {background:rgba(16,185,129,.15);color:var(--green)}
+.nbadge-chg.dn   {background:rgba(239,68,68,.12); color:var(--red)}
+.nbadge-chg.flat {background:rgba(100,116,139,.12);color:var(--muted)}
+.nbadge-state{background:var(--sf3);border:1px solid var(--bd);color:var(--text2)}
+
+/* NDVI scale bar */
+.ndvi-scalewrap{margin:12px 0 4px}
+.ndvi-scale{display:flex;border-radius:6px;overflow:hidden;height:8px}
+.ndvi-scale div{flex:1}
+.scale-labels{display:flex;justify-content:space-between;font-size:9px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:3px}
+
+/* ── METRICS ── */
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px}
+.mgrid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px}
+.metric{background:var(--sf2);border:1px solid var(--bd);border-radius:7px;padding:9px 10px}
+.metric-val{font-size:20px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--text);line-height:1}
+.metric-sub{font-size:10px;color:var(--muted);margin-top:3px}
+
+/* ── DEPTH BARS ── */
+.depth-bar{margin-bottom:7px}
+.depth-label{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px}
+.depth-label span:last-child{color:var(--text);font-weight:600;font-family:'JetBrains Mono',monospace}
+.bar-track{height:7px;background:var(--bd);border-radius:4px;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px;transition:width .9s ease}
+
+/* ── TEMP CHIPS ── */
+.tchip{display:inline-flex;align-items:center;gap:6px;background:var(--sf2);border:1px solid var(--bd);border-radius:7px;padding:6px 10px;font-size:12px;margin:3px}
+.tchip .val{font-family:'JetBrains Mono',monospace;font-weight:600;color:var(--text)}
+
+/* ── TAGS ── */
+.tag-cloud{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.tag{font-size:11px;padding:3px 9px;border-radius:99px;border:1px solid}
+.tg{background:rgba(16,185,129,.1);color:#10b981;border-color:rgba(16,185,129,.3)}
+.tb{background:rgba(59,130,246,.1);color:#60a5fa;border-color:rgba(59,130,246,.3)}
+.ta{background:rgba(245,158,11,.1);color:#f59e0b;border-color:rgba(245,158,11,.3)}
+.tr{background:rgba(239,68,68,.1); color:#f87171;border-color:rgba(239,68,68,.3)}
+.tp{background:rgba(139,92,246,.1);color:#a78bfa;border-color:rgba(139,92,246,.3)}
+
+/* ── CHARTS ── */
+.chart-wrap{background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:12px 12px 10px;margin-bottom:10px}
+.chart-title{font-size:11px;color:var(--muted);margin-bottom:8px;font-weight:500}
+.chart-wrap canvas{display:block}
+
+/* ── DI BADGE ── */
+.di-bar-wrap{background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:10px 12px;margin-bottom:8px}
+.di-label{display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px}
+.di-label span:last-child{font-family:'JetBrains Mono',monospace;font-weight:600}
+.di-track{height:8px;background:var(--bd);border-radius:4px;position:relative;overflow:visible}
+.di-center{position:absolute;left:50%;top:-1px;height:10px;width:1px;background:var(--bd2)}
+.di-fill{height:100%;border-radius:4px;transition:all .8s ease}
+
+/* ── FOOTER NOTE ── */
+.source-note{font-size:10px;color:var(--muted2);text-align:center;padding:6px 12px;border-top:1px solid var(--bd);flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ── ERROR ── */
+.err-box{background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:10px 12px;font-size:12px;color:#f87171}
+
+/* ── MODAL ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9000;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.modal-overlay.open{display:flex}
+.modal{background:var(--sf);border:1px solid var(--bd2);border-radius:12px;padding:24px;width:340px;box-shadow:0 24px 60px rgba(0,0,0,.5)}
+.modal-title{font-size:15px;font-weight:700;margin-bottom:16px;color:var(--text)}
+.modal-desc{font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.6}
+.modal-input{width:100%;background:var(--sf2);border:1px solid var(--bd2);border-radius:7px;color:var(--text);font-family:inherit;font-size:13px;padding:9px 12px;outline:none;margin-bottom:14px;transition:border-color .15s}
+.modal-input:focus{border-color:var(--accent)}
+.modal-btns{display:flex;gap:8px}
+.modal-btn{flex:1;padding:9px;border-radius:7px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;border:1px solid;transition:all .15s}
+.modal-btn.primary{background:var(--green);border-color:var(--green);color:#fff}
+.modal-btn.primary:hover{background:var(--green2);border-color:var(--green2)}
+.modal-btn.secondary{background:transparent;border-color:var(--bd);color:var(--muted)}
+.modal-btn.secondary:hover{background:var(--sf2);color:var(--text)}
+
+/* ── TOAST ── */
+.toast{position:fixed;bottom:24px;right:24px;z-index:9999;background:var(--sf3);border:1px solid var(--bd2);border-radius:8px;padding:10px 16px;font-size:12.5px;color:var(--text);box-shadow:0 8px 24px rgba(0,0,0,.4);display:none;align-items:center;gap:8px;max-width:280px}
+.toast.show{display:flex}
+.toast.ok .ti{color:var(--green)}
+.toast.err .ti{color:var(--red)}
+</style>
+</head>
+<body>
+
+<!-- ── TOP BAR ── -->
+<div class="topbar">
+  <a class="logo" href="/">
+    <div class="logo-icon">🛰️</div>
+    <div class="logo-text">Terra<span>Sat</span></div>
+  </a>
+  <div class="divider"></div>
+  <button class="tb-btn active" id="btn-polygon" onclick="setTool('polygon')">✏️ Polygon</button>
+  <button class="tb-btn" id="btn-marker"  onclick="setTool('marker')">📍 Nuqta</button>
+  <div class="divider"></div>
+  <button class="tb-btn g" id="btn-ndvi" onclick="toggleMapLayer('ndvi')">🟩 NDVI</button>
+  <button class="tb-btn"   id="btn-sat"  onclick="toggleMapLayer('sat')">🛰 Sat rasm</button>
+  <div class="divider"></div>
+  <button class="tb-btn danger" onclick="clearAll()">🗑 Tozalash</button>
+  <div class="tb-spacer"></div>
+  <div class="live-badge">
+    <div class="dot-live"></div>
+    <span>Open-Meteo ERA5 · NASA GIBS · Groq AI</span>
+  </div>
+</div>
+
+<!-- ── MAIN ── -->
+<div class="main">
+
+  <!-- HISTORY SIDEBAR -->
+  <div class="hist-sidebar" id="hist-sidebar">
+    <div class="hist-head">
+      <div class="hist-head-title">
+        🗂 Tarix
+        <span class="hist-count-badge" id="hist-cnt">0</span>
+      </div>
+      <button class="hist-toggle-btn" onclick="toggleHistSidebar()" title="Yopish">◀</button>
+    </div>
+    <div class="hist-list" id="hist-list">
+      <div class="hist-empty">
+        <div class="ico">📂</div>
+        <p>Hali tahlil saqlanmagan. Tahlil qilib "Saqlash" tugmasini bosing.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAP -->
+  <div id="map"></div>
+  <div class="map-hint" id="hint">🖱️ Polygon uchun nuqtalarni bosing · Tugatish uchun ikki marta bosing</div>
+
+  <!-- ANALYSIS PANEL -->
+  <div class="panel closed" id="panel">
+    <div class="panel-head">
+      <div class="panel-title"><div class="dot"></div>Sun'iy yo'ldosh tahlili</div>
+      <div class="panel-actions">
+        <button class="pact-btn" id="btn-save" onclick="showSaveModal()" disabled title="Saqlash">💾 Saqlash</button>
+        <button class="pact-btn" id="btn-export" onclick="exportJSON()" disabled title="Export">⬇ JSON</button>
+        <button class="close-x" onclick="closePanel()">×</button>
+      </div>
+    </div>
+
+    <div class="coords-box">
+      <div class="coords-label">Belgilangan koordinatalar</div>
+      <div class="coords-list" id="coords-list"></div>
+      <div class="coords-area"  id="coords-area"></div>
+    </div>
+
+    <div class="analyze-sec">
+      <button class="analyze-btn" id="analyze-btn" onclick="runAnalysis()">
+        🛰️ Haqiqiy ma'lumotlarni tahlil qilish
+      </button>
+    </div>
+
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('ndvi')">NDVI</div>
+      <div class="tab"        onclick="switchTab('soil')">Tuproq</div>
+      <div class="tab"        onclick="switchTab('weather')">Ob-havo</div>
+      <div class="tab"        onclick="switchTab('ai')">AI Tahlil</div>
+    </div>
+
+    <div class="results" id="results">
+      <div class="empty-state">
+        <div class="ico">🛰️</div>
+        <p>Xaritada hudud belgilang va haqiqiy sun'iy yo'ldosh ma'lumotlarini oling</p>
+      </div>
+    </div>
+
+    <div class="source-note" id="source-note" style="display:none">
+      Open-Meteo ERA5 reanalizi · NASA GIBS MODIS · Groq llama-3.3-70b
+    </div>
+  </div>
+</div>
+
+<!-- SAVE MODAL -->
+<div class="modal-overlay" id="modal" onclick="onModalOverlay(event)">
+  <div class="modal">
+    <div class="modal-title">💾 Tahlilni saqlash</div>
+    <div class="modal-desc">Tahlil natijasi Django bazasiga saqlanadi va keyingi seansda ham ko'rish mumkin bo'ladi.</div>
+    <input class="modal-input" id="save-name" type="text" placeholder="Nom kiriting (ixtiyoriy, maks. 200 belgi)" maxlength="200"/>
+    <div class="modal-btns">
+      <button class="modal-btn primary"    onclick="doSave()">Saqlash</button>
+      <button class="modal-btn secondary"  onclick="closeModal()">Bekor</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"><span class="ti">✓</span><span id="toast-msg"></span></div>
+
+<script>
+// ════════════════════════════════════════════════
+//  STATE
+// ════════════════════════════════════════════════
+const S = {
+  tool:        'polygon',
+  pts:         [],
+  polyline:    null,
+  poly:        null,
+  mkrs:        [],        // {latlng, marker}
+  data:        null,      // current analysis result
+  tab:         'ndvi',
+  charts:      {},
+  histOpen:    true,
+  savedId:     null,      // DB id after save
+  histPolys:   {},        // id → leaflet layer
+};
+
+// ════════════════════════════════════════════════
+//  MAP INIT
+// ════════════════════════════════════════════════
+const map = L.map('map', { zoomControl: true }).setView([41.2995, 69.2401], 7);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap', maxZoom: 19,
+}).addTo(map);
+
+function gibsDate() {
+  const d = new Date();
+  d.setDate(d.getDate() - 10);
+  return d.toISOString().split('T')[0];
+}
+const _gd = gibsDate();
+const layerNDVI = L.tileLayer(
+  `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_NDVI_8Day/default/${_gd}/GoogleMapsCompatible/{z}/{y}/{x}.png`,
+  { attribution: 'NASA GIBS MODIS NDVI', opacity: 0.75, maxZoom: 9 }
+);
+const layerSat = L.tileLayer(
+  `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/${_gd}/GoogleMapsCompatible/{z}/{y}/{x}.jpg`,
+  { attribution: 'NASA GIBS True Color', opacity: 1, maxZoom: 9 }
+);
+let _ndviOn = false, _satOn = false;
+
+function toggleMapLayer(name) {
+  if (name === 'ndvi') {
+    _ndviOn = !_ndviOn;
+    _ndviOn ? layerNDVI.addTo(map) : map.removeLayer(layerNDVI);
+    document.getElementById('btn-ndvi').classList.toggle('active', _ndviOn);
+  } else {
+    _satOn = !_satOn;
+    _satOn ? layerSat.addTo(map) : map.removeLayer(layerSat);
+    document.getElementById('btn-sat').classList.toggle('active', _satOn);
+  }
+}
+
+// ════════════════════════════════════════════════
+//  DRAWING TOOLS
+// ════════════════════════════════════════════════
+const dotIcon = (col = '#3b82f6') => L.divIcon({
+  className: '',
+  html: `<div style="width:10px;height:10px;border-radius:50%;background:${col};border:2px solid #fff;box-shadow:0 0 8px ${col}80"></div>`,
+  iconSize: [10, 10], iconAnchor: [5, 5],
+});
+
+function setTool(t) {
+  S.tool = t;
+  document.querySelectorAll('.tb-btn[id^="btn-"]').forEach(b => {
+    if (b.id === 'btn-polygon' || b.id === 'btn-marker') b.classList.remove('active');
+  });
+  document.getElementById('btn-' + t).classList.add('active');
+}
+
+map.on('click', e => {
+  if (S.tool === 'marker') addMarker(e.latlng);
+  else                     addPolyPt(e.latlng);
+});
+
+map.on('dblclick', e => {
+  L.DomEvent.stop(e);
+  if (S.tool === 'polygon' && S.pts.length >= 3) finalPoly();
+});
+
+function addMarker(ll) {
+  const m = L.marker(ll, { icon: dotIcon('#10b981') }).addTo(map);
+  S.mkrs.push({ latlng: ll, marker: m });
+  updateCoordsPanel([ll]);
+  openPanel();
+}
+
+function addPolyPt(ll) {
+  S.pts.push(ll);
+  L.marker(ll, { icon: dotIcon() }).addTo(map);
+  if (S.polyline) map.removeLayer(S.polyline);
+  if (S.pts.length > 1)
+    S.polyline = L.polyline(S.pts, { color: '#3b82f6', weight: 2, dashArray: '6 4', opacity: .8 }).addTo(map);
+  if (S.pts.length >= 3) {
+    document.getElementById('hint').classList.add('hidden');
+    if (S.poly) map.removeLayer(S.poly);
+    S.poly = L.polygon(S.pts, { color: '#10b981', fillColor: '#10b981', fillOpacity: .12, weight: 2 }).addTo(map);
+    updateCoordsPanel(S.pts);
+    openPanel();
+  }
+}
+
+function finalPoly() {
+  if (S.polyline) { map.removeLayer(S.polyline); S.polyline = null; }
+  if (S.poly) {
+    map.removeLayer(S.poly);
+    S.poly = L.polygon(S.pts, { color: '#10b981', fillColor: '#10b981', fillOpacity: .18, weight: 2 }).addTo(map);
+  }
+  updateCoordsPanel(S.pts);
+}
+
+function clearAll() {
+  map.eachLayer(l => { if (!(l instanceof L.TileLayer)) map.removeLayer(l); });
+  Object.assign(S, { pts:[], polyline:null, poly:null, mkrs:[], data:null, savedId:null, histPolys:{} });
+  document.getElementById('hint').classList.remove('hidden');
+  document.getElementById('results').innerHTML = emptyHTML();
+  document.getElementById('source-note').style.display = 'none';
+  setActionBtns(false);
+  document.getElementById('panel').classList.add('closed');
+  destroyCharts();
+}
+
+// ════════════════════════════════════════════════
+//  PANEL
+// ════════════════════════════════════════════════
+function openPanel()  { document.getElementById('panel').classList.remove('closed'); }
+function closePanel() { document.getElementById('panel').classList.add('closed'); }
+function emptyHTML()  {
+  return `<div class="empty-state"><div class="ico">🛰️</div><p>Xaritada hudud belgilang va haqiqiy sun'iy yo'ldosh ma'lumotlarini oling</p></div>`;
+}
+function setActionBtns(enabled) {
+  document.getElementById('btn-save').disabled   = !enabled;
+  document.getElementById('btn-export').disabled = !enabled;
+}
+
+function calcArea(pts) {
+  if (pts.length < 3) return 0;
+  let a = 0;
+  const D2R = Math.PI / 180;
+  const latC = pts.reduce((s,p) => s + p.lat, 0) / pts.length;
+  for (let i = 0; i < pts.length; i++) {
+    const j = (i + 1) % pts.length;
+    a += (pts[i].lng - pts[j].lng) * (pts[i].lat + pts[j].lat);
+  }
+  const DEG = 111319.5;
+  return Math.abs(a) / 2 * DEG * DEG * Math.cos(latC * D2R);
+}
+
+function updateCoordsPanel(pts) {
+  document.getElementById('coords-list').innerHTML = pts.map((c, i) =>
+    `<div class="coord-item"><span class="coord-num">${i+1}</span>${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}</div>`
+  ).join('');
+  if (pts.length >= 3) {
+    const ha = (calcArea(pts) / 10000).toFixed(2);
+    document.getElementById('coords-area').innerHTML = `Maydon: <span>${ha} ha</span> · ${(calcArea(pts)/1e6).toFixed(4)} km²`;
+  } else {
+    document.getElementById('coords-area').innerHTML = `<span>${pts.length} nuqta</span>`;
+  }
+}
+
+// ════════════════════════════════════════════════
+//  TABS
+// ════════════════════════════════════════════════
+function switchTab(tab) {
+  S.tab = tab;
+  document.querySelectorAll('.tab').forEach((el, i) => {
+    el.classList.toggle('active', ['ndvi','soil','weather','ai'][i] === tab);
+  });
+  if (S.data) renderTab(tab, S.data);
+}
+
+// ════════════════════════════════════════════════
+//  ANALYSIS API CALL
+// ════════════════════════════════════════════════
+async function runAnalysis() {
+  const pts = S.pts.length >= 3 ? S.pts : S.mkrs.map(m => m.latlng);
+  if (!pts.length) { alert('Avval xaritada hudud belgilang!'); return; }
+
+  const btn = document.getElementById('analyze-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div> Ma\'lumotlar yuklanmoqda...';
+  document.getElementById('results').innerHTML = `
+    <div class="empty-state">
+      <div class="spinner" style="width:32px;height:32px;border-width:3px"></div>
+      <p style="margin-top:12px">ERA5 arxividan 12 oylik ma'lumot olinmoqda...</p>
+    </div>`;
+
+  const areaHa = S.pts.length >= 3 ? calcArea(pts) / 10000 : null;
+
+  try {
+    const res = await fetch('/api/satellite/analyze/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+      body: JSON.stringify({ coordinates: pts.map(p => ({ lat: p.lat, lng: p.lng })), area_ha: areaHa }),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.error || `Server xatosi: ${res.status}`);
+    }
+    S.data    = await res.json();
+    S.savedId = null;
+    document.getElementById('source-note').style.display = 'block';
+    setActionBtns(true);
+    renderTab(S.tab, S.data);
+  } catch (err) {
+    document.getElementById('results').innerHTML = `
+      <div class="err-box"><strong>Xatolik:</strong> ${err.message}<br><br>
+      <small>Server va .env faylini tekshiring (GROQ_API_KEY).</small></div>`;
+    setActionBtns(false);
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '🛰️ Qayta tahlil qilish';
+}
+
+// ════════════════════════════════════════════════
+//  NDVI COLOR
+// ════════════════════════════════════════════════
+function ndviColor(v) {
+  if (v < 0)    return '#6b2d0f';
+  if (v < 0.10) return '#b45309';
+  if (v < 0.20) return '#ca8a04';
+  if (v < 0.35) return '#84cc16';
+  if (v < 0.50) return '#22c55e';
+  if (v < 0.65) return '#16a34a';
+  if (v < 0.80) return '#15803d';
+  return '#14532d';
+}
+
+function moistureColor(v) {
+  if (v < 15) return '#ef4444';
+  if (v < 30) return '#f59e0b';
+  return '#10b981';
+}
+
+function destroyCharts() {
+  Object.values(S.charts).forEach(c => c?.destroy());
+  S.charts = {};
+}
+
+// ════════════════════════════════════════════════
+//  TAB RENDERERS
+// ════════════════════════════════════════════════
+function renderTab(tab, d) {
+  destroyCharts();
+  const r = document.getElementById('results');
+  if (tab === 'ndvi')    renderNdvi(r, d);
+  else if (tab === 'soil')    renderSoil(r, d);
+  else if (tab === 'weather') renderWeather(r, d);
+  else if (tab === 'ai')      renderAI(r, d);
+}
+
+// ── NDVI TAB ──
+function renderNdvi(r, d) {
+  const nd  = d.ndvi;
+  const cur = nd.current;
+  const chg = nd.change;
+  const di  = nd.drought_index ?? 0;
+  const clr = ndviColor(cur);
+  const cDir = chg >  0.02 ? 'up' : chg < -0.02 ? 'dn' : 'flat';
+  const cIco = chg >  0.02 ? '↑ +' : chg < -0.02 ? '↓ ' : '→ ±';
+  const months   = nd.monthly.map(m => m.month.slice(5));
+  const ndviVals = nd.monthly.map(m => m.ndvi);
+  const eviVals  = nd.monthly.map(m => m.evi ?? 0);
+  const ndwiVals = nd.monthly.map(m => m.ndwi ?? null);
+  const curNdwi  = nd.ndwi_current ?? null;
+
+  // Drought index display
+  const diPct   = ((di + 3) / 6) * 100;
+  const diCol   = di < -1 ? '#ef4444' : di > 1 ? '#10b981' : '#f59e0b';
+  const diLabel = di < -1.5 ? 'Juda quruq' : di < -0.5 ? "Quruq" : di > 1.5 ? 'Nam' : di > 0.5 ? "Biroz nam" : "Normal";
+
+  r.innerHTML = `
+    <div class="rsec">
+      <div class="rsec-t">Joriy NDVI</div>
+      <div class="ndvi-hero">
+        <div class="ndvi-big" style="color:${clr}">${cur.toFixed(3)}</div>
+        <div class="ndvi-sub">Normalized Difference Vegetation Index · ERA5</div>
+        <div class="ndvi-badges">
+          <div class="nbadge nbadge-chg ${cDir}">${cIco}${Math.abs(chg).toFixed(3)} (1 yil)</div>
+          <div class="nbadge nbadge-state">${nd.monthly.slice(-1)[0]?.month || ''}</div>
+          ${curNdwi !== null ? `<div class="nbadge" style="background:rgba(59,130,246,.15);color:#60a5fa;border:1px solid #1d4ed8">NDWI ${curNdwi > 0 ? '+' : ''}${curNdwi.toFixed(3)}</div>` : ''}
+        </div>
+        <div class="ndvi-scalewrap">
+          <div class="ndvi-scale">
+            <div style="background:#6b2d0f"></div><div style="background:#b45309"></div>
+            <div style="background:#ca8a04"></div><div style="background:#84cc16"></div>
+            <div style="background:#22c55e"></div><div style="background:#16a34a"></div>
+            <div style="background:#15803d"></div><div style="background:#14532d"></div>
+          </div>
+          <div class="scale-labels"><span>-0.1</span><span>0.0</span><span>0.2</span><span>0.4</span><span>0.6</span><span>0.8</span><span>1.0</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="rsec">
+      <div class="rsec-t">12 oylik NDVI, EVI & NDWI trend</div>
+      <div class="chart-wrap">
+        <canvas id="cNdvi" height="145"></canvas>
+      </div>
+    </div>
+
+    <div class="rsec">
+      <div class="rsec-t">Qurg'oqchilik indeksi (DI)</div>
+      <div class="di-bar-wrap">
+        <div class="di-label">
+          <span>Juda quruq ←→ Nam</span>
+          <span style="color:${diCol}">${di} · ${diLabel}</span>
+        </div>
+        <div class="di-track">
+          <div class="di-center"></div>
+          <div class="di-fill" style="
+            width:${Math.min(Math.abs(di)/3*50,50)}%;
+            background:${diCol};
+            margin-left:${di>=0?'50%':50-Math.min(Math.abs(di)/3*50,50)+'%'}">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="rsec">
+      <div class="rsec-t">Oylik ko'rsatkichlar</div>
+      <div class="mgrid3">
+        <div class="metric">
+          <div class="metric-val" style="color:${ndviColor(Math.max(...ndviVals))};font-size:16px">${Math.max(...ndviVals).toFixed(3)}</div>
+          <div class="metric-sub">Maks NDVI</div>
+        </div>
+        <div class="metric">
+          <div class="metric-val" style="color:${ndviColor(Math.min(...ndviVals))};font-size:16px">${Math.min(...ndviVals).toFixed(3)}</div>
+          <div class="metric-sub">Min NDVI</div>
+        </div>
+        <div class="metric">
+          <div class="metric-val" style="font-size:16px">${(ndviVals.reduce((a,b)=>a+b,0)/ndviVals.length).toFixed(3)}</div>
+          <div class="metric-sub">O'rtacha</div>
+        </div>
+      </div>
+    </div>`;
+
+  // Chart with bands plugin
+  const ndviBands = {
+    id: 'ndviBands',
+    beforeDraw(chart) {
+      const { ctx, chartArea: { left, right }, scales: { y } } = chart;
+      const bands = [
+        { min: -0.1, max: 0.1, c: 'rgba(239,68,68,.06)' },
+        { min:  0.1, max: 0.3, c: 'rgba(245,158,11,.06)' },
+        { min:  0.3, max: 0.6, c: 'rgba(132,204,22,.06)' },
+        { min:  0.6, max: 1.0, c: 'rgba(16,185,129,.07)' },
+      ];
+      bands.forEach(b => {
+        const yt = y.getPixelForValue(b.max);
+        const yb = y.getPixelForValue(b.min);
+        ctx.fillStyle = b.c;
+        ctx.fillRect(left, yt, right - left, yb - yt);
+      });
+    }
+  };
+
+  S.charts.ndvi = new Chart(document.getElementById('cNdvi').getContext('2d'), {
+    data: {
+      labels: months,
+      datasets: [
+        {
+          type: 'line', label: 'NDVI',
+          data: ndviVals,
+          borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,.07)',
+          fill: true, tension: 0.4, borderWidth: 2,
+          pointBackgroundColor: ndviVals.map(v => ndviColor(v)), pointRadius: 4,
+          yAxisID: 'y',
+        },
+        {
+          type: 'line', label: 'EVI',
+          data: eviVals,
+          borderColor: '#8b5cf6', backgroundColor: 'transparent',
+          fill: false, tension: 0.4, borderWidth: 1.5, borderDash: [4, 3],
+          pointRadius: 0, yAxisID: 'y',
+        },
+        {
+          type: 'line', label: 'NDWI',
+          data: ndwiVals,
+          borderColor: '#38bdf8', backgroundColor: 'transparent',
+          fill: false, tension: 0.4, borderWidth: 1.5, borderDash: [2, 4],
+          pointRadius: 0, yAxisID: 'y',
+          spanGaps: false,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { labels: { color: '#94a3b8', font: { size: 10 }, boxWidth: 12 } }
+      },
+      scales: {
+        y: { min: -0.1, max: 1.0, grid: { color: '#1a2b40' }, ticks: { color: '#64748b', font: { family: 'JetBrains Mono', size: 10 } } },
+        x: { grid: { color: '#1a2b40' }, ticks: { color: '#64748b', font: { size: 10 } } }
+      }
+    },
+    plugins: [ndviBands],
+  });
+}
+
+// ── SOIL TAB ──
+function renderSoil(r, d) {
+  const s  = d.soil;
+  const ms = [
+    { lbl: '0 – 1 cm',   v: s.moisture_0_1cm  ?? 0 },
+    { lbl: '1 – 3 cm',   v: s.moisture_1_3cm  ?? 0 },
+    { lbl: '3 – 9 cm',   v: s.moisture_3_9cm  ?? 0 },
+    { lbl: '9 – 27 cm',  v: s.moisture_9_27cm ?? 0 },
+  ];
+
+  r.innerHTML = `
+    <div class="rsec">
+      <div class="rsec-t">Tuproq harorati (hozir)</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px">
+        <div class="tchip">🌡 Yuza (0 cm) <span class="val">${s.surface_temp ?? '—'}°C</span></div>
+        <div class="tchip">📏 6 cm <span class="val">${s.depth_6cm_temp ?? '—'}°C</span></div>
+        <div class="tchip">📏 18 cm <span class="val">${s.depth_18cm_temp ?? '—'}°C</span></div>
+      </div>
+    </div>
+
+    <div class="rsec">
+      <div class="rsec-t">Tuproq namligi — chuqurlik bo'yicha</div>
+      ${ms.map(m => `
+        <div class="depth-bar">
+          <div class="depth-label"><span>${m.lbl}</span><span>${m.v}%</span></div>
+          <div class="bar-track"><div class="bar-fill" style="width:${Math.min(m.v,100)}%;background:${moistureColor(m.v)}"></div></div>
+        </div>`).join('')}
+      <div class="card" style="margin-top:8px">
+        <div class="card-b" style="font-size:11px">
+          <span style="color:#ef4444">■ &lt;15% — quruq</span> &nbsp;
+          <span style="color:#f59e0b">■ 15–30% — normal</span> &nbsp;
+          <span style="color:#10b981">■ &gt;30% — nam</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="rsec">
+      <div class="rsec-t">Namlik profili (grafik)</div>
+      <div class="chart-wrap">
+        <canvas id="cSoil" height="130"></canvas>
+      </div>
+    </div>
+
+    ${s.properties ? `
+    <div class="rsec">
+      <div class="rsec-t">Tuproq kimyosi — SoilGrids ISRIC (haqiqiy o'lchov)</div>
+      <div class="mgrid" style="grid-template-columns:repeat(3,1fr);gap:6px">
+        <div class="metric">
+          <div class="metric-val" style="color:${(s.properties.ph||7)<6.5?'#f59e0b':(s.properties.ph||7)>7.5?'#ef4444':'#10b981'}">${s.properties.ph ?? '—'}</div>
+          <div class="metric-sub">pH · ${s.properties.ph_label || '—'}</div>
+        </div>
+        <div class="metric">
+          <div class="metric-val">${s.properties.clay_pct ?? '—'}%</div>
+          <div class="metric-sub">Loy</div>
+        </div>
+        <div class="metric">
+          <div class="metric-val">${s.properties.sand_pct ?? '—'}%</div>
+          <div class="metric-sub">Qum</div>
+        </div>
+        <div class="metric">
+          <div class="metric-val">${s.properties.silt_pct ?? '—'}%</div>
+          <div class="metric-sub">Lyoss (silt)</div>
+        </div>
+        <div class="metric">
+          <div class="metric-val">${s.properties.nitrogen_cg_kg ?? '—'}</div>
+          <div class="metric-sub">Azot (cg/kg)</div>
+        </div>
+        <div class="metric">
+          <div class="metric-val">${s.properties.organic_carbon_kg_m3 ?? '—'}</div>
+          <div class="metric-sub">Org. uglerod</div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:6px">
+        <div class="card-b">Tekstura: <strong>${s.properties.texture_label || '—'}</strong> · Zichlik: ${s.properties.bulk_density_cg_cm3 ?? '—'} cg/cm³</div>
+      </div>
+    </div>` : ''}
+    <div class="rsec">
+      <div class="rsec-t">Ma'lumot manbalari</div>
+      <div class="card">
+        <div class="card-b">
+          <strong>Namlik/Harorat:</strong> ERA5-Land reanaliz (Open-Meteo)<br>
+          <strong>Kimyo (pH, loy, qum, N):</strong> SoilGrids ISRIC v2.0 — haqiqiy laboratoriya o'lchovlari
+        </div>
+      </div>
+    </div>`;
+
+  S.charts.soil = new Chart(document.getElementById('cSoil').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: ms.map(m => m.lbl),
+      datasets: [{
+        label: 'Namlik %',
+        data: ms.map(m => m.v),
+        backgroundColor: ms.map(m => moistureColor(m.v) + '99'),
+        borderColor:     ms.map(m => moistureColor(m.v)),
+        borderWidth: 1, borderRadius: 5,
+      }]
+    },
+    options: {
+      indexAxis: 'y', responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { min: 0, max: 60, grid: { color: '#1a2b40' }, ticks: { color: '#64748b', font: { size: 10 } } },
+        y: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 10 } } }
+      }
+    }
+  });
+}
+
+// ── WEATHER TAB ──
+function renderWeather(r, d) {
+  const w      = d.weather;
+  const months = w.monthly.map(m => m.month.slice(5));
+  const temps  = w.monthly.map(m => m.temp);
+  const precs  = w.monthly.map(m => m.precip);
+
+  r.innerHTML = `
+    <div class="rsec">
+      <div class="rsec-t">Yillik ko'rsatkichlar</div>
+      <div class="mgrid" style="grid-template-columns:repeat(2,1fr);gap:6px">
+        <div class="metric"><div class="metric-val">${w.avg_temp}°C</div><div class="metric-sub">O'rtacha harorat</div></div>
+        <div class="metric"><div class="metric-val">${w.annual_precip}<span style="font-size:12px"> mm</span></div><div class="metric-sub">Yillik yog'in</div></div>
+        <div class="metric"><div class="metric-val" style="color:#60a5fa">${w.avg_humidity ?? '—'}%</div><div class="metric-sub">O'rtacha namlik</div></div>
+        <div class="metric"><div class="metric-val" style="color:#a78bfa">${w.avg_wind ?? '—'}<span style="font-size:12px"> m/s</span></div><div class="metric-sub">O'rtacha shamol</div></div>
+      </div>
+    </div>
+    <div class="rsec">
+      <div class="rsec-t">Harorat · Yog'in (12 oy)</div>
+      <div class="chart-wrap">
+        <div class="chart-title">Sariq = harorat (°C, o'ng), Ko'k = yog'in (mm, chap)</div>
+        <canvas id="cWeather" height="160"></canvas>
+      </div>
+    </div>`;
+
+  S.charts.weather = new Chart(document.getElementById('cWeather').getContext('2d'), {
+    data: {
+      labels: months,
+      datasets: [
+        {
+          type: 'bar', label: "Yog'in (mm)",
+          data: precs, yAxisID: 'precip',
+          backgroundColor: 'rgba(59,130,246,.4)', borderColor: '#3b82f6', borderWidth: 1, borderRadius: 4,
+        },
+        {
+          type: 'line', label: 'Harorat (°C)',
+          data: temps, yAxisID: 'temp',
+          borderColor: '#f59e0b', backgroundColor: 'transparent',
+          tension: 0.4, pointRadius: 3, borderWidth: 2,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { labels: { color: '#94a3b8', font: { size: 10 }, boxWidth: 12 } } },
+      scales: {
+        temp:   { type: 'linear', position: 'right', grid: { display: false }, ticks: { color: '#f59e0b', font: { family: 'JetBrains Mono', size: 10 } } },
+        precip: { type: 'linear', position: 'left',  grid: { color: '#1a2b40' }, ticks: { color: '#3b82f6', font: { family: 'JetBrains Mono', size: 10 } } },
+        x:      { grid: { color: '#1a2b40' }, ticks: { color: '#64748b', font: { size: 10 } } }
+      }
+    }
+  });
+}
+
+// ── AI TAB ──
+function renderAI(r, d) {
+  const a = d.analysis || {};
+  const tag = (arr, cls) => (arr || []).map(x => `<span class="tag ${cls}">${x}</span>`).join('');
+
+  r.innerHTML = `
+    <div class="rsec">
+      <div class="rsec-t">O'simlik holati</div>
+      <div class="card">
+        <div class="card-t">🌿 ${a.osimlik_holati || '—'}</div>
+        <div class="card-b">${a.ndvi_baho || '—'}</div>
+      </div>
+    </div>
+    <div class="rsec">
+      <div class="rsec-t">Tuproq tahlili</div>
+      <div class="card"><div class="card-b">${a.tuproq_tahlili || '—'}</div></div>
+    </div>
+    <div class="rsec">
+      <div class="rsec-t">Qurg'oqchilik xatari</div>
+      <div class="card"><div class="card-b">${a.qurgochlik || '—'}</div></div>
+    </div>
+    <div class="rsec">
+      <div class="rsec-t">Tavsiya etiladigan ekinlar</div>
+      <div class="tag-cloud">${tag(a.tavsiya_ekinlar, 'tg')}</div>
+    </div>
+    <div class="rsec">
+      <div class="rsec-t">Dehqonchilik maslahatlari</div>
+      <div class="tag-cloud">${tag(a.dehqonchilik_maslahati, 'tb')}</div>
+    </div>
+    <div class="rsec">
+      <div class="rsec-t">Ustuvor harakatlar</div>
+      <div class="tag-cloud">${tag(a.ustuvor_harakatlar, 'tp')}</div>
+    </div>
+    <div class="rsec">
+      <div class="rsec-t">Xavflar</div>
+      <div class="tag-cloud">${tag(a.xavflar, 'tr')}</div>
+    </div>
+    <div class="rsec">
+      <div class="rsec-t">Keyingi oy bashorati</div>
+      <div class="card"><div class="card-b">${a.bashorat || '—'}</div></div>
+    </div>
+    <div class="rsec">
+      <div class="rsec-t">Umumiy xulosa</div>
+      <div class="card"><div class="card-b" style="line-height:1.8">${a.xulosa || '—'}</div></div>
+    </div>`;
+}
+
+// ════════════════════════════════════════════════
+//  SAVE & EXPORT
+// ════════════════════════════════════════════════
+function showSaveModal() {
+  if (!S.data) return;
+  document.getElementById('save-name').value = '';
+  document.getElementById('modal').classList.add('open');
+  document.getElementById('save-name').focus();
+}
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+function onModalOverlay(e) { if (e.target === document.getElementById('modal')) closeModal(); }
+
+async function doSave() {
+  if (!S.data) return;
+  const name = document.getElementById('save-name').value.trim();
+  closeModal();
+
+  const pts = S.pts.length >= 3 ? S.pts : S.mkrs.map(m => m.latlng);
+  const areaHa = S.pts.length >= 3 ? calcArea(pts) / 10000 : null;
+
+  try {
+    const res = await fetch('/api/satellite/analyze/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+      body: JSON.stringify({
+        coordinates: pts.map(p => ({ lat: p.lat, lng: p.lng })),
+        area_ha: areaHa, save: true, name,
+      }),
+    });
+    const j = await res.json();
+    if (!res.ok) throw new Error(j.error || 'Xatolik');
+    S.savedId = j.saved_id;
+    toast('✓ Tahlil saqlandi', 'ok');
+    loadHistory();
+  } catch (e) {
+    toast('✗ ' + e.message, 'err');
+  }
+}
+
+function exportJSON() {
+  if (!S.data) return;
+  const blob = new Blob([JSON.stringify(S.data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `terrasat_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ════════════════════════════════════════════════
+//  HISTORY
+// ════════════════════════════════════════════════
+async function loadHistory() {
+  try {
+    const res  = await fetch('/api/satellite/history/');
+    const json = await res.json();
+    renderHistory(json.results || [], json.count || 0);
+  } catch (_) { /* silent */ }
+}
+
+function renderHistory(items, total) {
+  document.getElementById('hist-cnt').textContent = total;
+  const el = document.getElementById('hist-list');
+  if (!items.length) {
+    el.innerHTML = `<div class="hist-empty"><div class="ico">📂</div><p>Hali tahlil saqlanmagan.</p></div>`;
+    return;
+  }
+  el.innerHTML = items.map(it => {
+    const col   = ndviColor(it.ndvi_current);
+    const bg    = col + '22';
+    const date  = new Date(it.created_at).toLocaleString('uz-UZ', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+    const name  = it.name || `${it.center_lat.toFixed(3)}, ${it.center_lng.toFixed(3)}`;
+    const area  = it.area_ha ? ` · ${it.area_ha.toFixed(1)} ha` : '';
+    return `
+      <div class="hist-item" id="hi-${it.id}" data-id="${it.id}">
+        <div class="hist-item-top">
+          <div class="hist-ndvi-dot" style="background:${bg};color:${col}">${it.ndvi_current.toFixed(2)}</div>
+          <div class="hist-item-info">
+            <div class="hist-item-name">${name}</div>
+            <div class="hist-item-loc">${it.center_lat.toFixed(4)}, ${it.center_lng.toFixed(4)}${area}</div>
+          </div>
+        </div>
+        <div class="hist-item-date">🕐 ${date} · DI ${it.drought_index ?? '—'}</div>
+        <div class="hist-item-actions">
+          <button class="hist-act-btn load" onclick="loadHistItem(${it.id})">↩ Yuklash</button>
+          <button class="hist-act-btn del"  onclick="deleteHistItem(${it.id})">✕ O'chirish</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function loadHistItem(id) {
+  try {
+    const res  = await fetch(`/api/satellite/history/${id}/`);
+    const item = await res.json();
+
+    // Restore polygon on map
+    clearAll();
+    const pts = (item.coordinates || []).map(c => L.latLng(c.lat, c.lng));
+    if (pts.length >= 3) {
+      pts.forEach(ll => L.marker(ll, { icon: dotIcon() }).addTo(map));
+      S.pts = pts;
+      S.poly = L.polygon(pts, { color: '#10b981', fillColor: '#10b981', fillOpacity: .18, weight: 2 }).addTo(map);
+      map.fitBounds(S.poly.getBounds(), { padding: [30, 30] });
+      updateCoordsPanel(pts);
+    }
+
+    // Build data object compatible with renderTab
+    S.data = {
+      location: { lat: item.center_lat, lng: item.center_lng, area_ha: item.area_ha },
+      ndvi:    { current: item.ndvi_current, change: item.ndvi_change, monthly: item.ndvi_monthly,
+                 drought_index: item.drought_index, ndwi_current: item.ndwi_current },
+      soil:    { ...item.soil_data, properties: item.soil_properties || null },
+      weather: item.weather_data,
+      analysis: item.ai_analysis,
+    };
+    S.savedId = id;
+
+    document.getElementById('hint').classList.add('hidden');
+    document.getElementById('source-note').style.display = 'block';
+    setActionBtns(true);
+    openPanel();
+    renderTab(S.tab, S.data);
+
+    document.querySelectorAll('.hist-item').forEach(el => el.classList.remove('active-hist'));
+    document.getElementById('hi-' + id)?.classList.add('active-hist');
+  } catch (e) {
+    toast('✗ Yuklashda xatolik: ' + e.message, 'err');
+  }
+}
+
+async function deleteHistItem(id) {
+  if (!confirm('Bu tahlilni o\'chirishni tasdiqlaysizmi?')) return;
+  try {
+    await fetch(`/api/satellite/history/${id}/`, {
+      method: 'DELETE',
+      headers: { 'X-CSRFToken': getCsrf() },
+    });
+    document.getElementById('hi-' + id)?.remove();
+    toast('✓ O\'chirildi', 'ok');
+    loadHistory();
+  } catch (e) {
+    toast('✗ ' + e.message, 'err');
+  }
+}
+
+// ════════════════════════════════════════════════
+//  HISTORY SIDEBAR TOGGLE
+// ════════════════════════════════════════════════
+function toggleHistSidebar() {
+  S.histOpen = !S.histOpen;
+  document.getElementById('hist-sidebar').classList.toggle('closed', !S.histOpen);
+}
+
+// ════════════════════════════════════════════════
+//  TOAST
+// ════════════════════════════════════════════════
+let _toastTimer;
+function toast(msg, type = 'ok') {
+  const el = document.getElementById('toast');
+  document.getElementById('toast-msg').textContent = msg;
+  el.className = `toast show ${type}`;
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { el.classList.remove('show'); }, 3000);
+}
+
+// ════════════════════════════════════════════════
+//  CSRF
+// ════════════════════════════════════════════════
+function getCsrf() {
+  return document.cookie.split(';').map(c => c.trim()).find(c => c.startsWith('csrftoken='))?.split('=')[1] || '';
+}
+
+// ════════════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════════════
+loadHistory();
+</script>
+</body>
+</html>
