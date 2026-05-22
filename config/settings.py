@@ -96,7 +96,16 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [],   # permission yo'q — faqat filtrlash
+    'DEFAULT_PARSER_CLASSES': [
+        'rest_framework.parsers.MultiPartParser',
+        'rest_framework.parsers.FormParser',
+        'rest_framework.parsers.JSONParser',
+    ],
 }
+
+# Media files — rasm yuklash uchun
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 
 GROQ_API_KEY = os.getenv('GROQ_API_KEY', '')
 
@@ -108,3 +117,7 @@ AGRO_API_KEY = os.getenv('AGRO_API_KEY', '')
 # Bepul ro'yxat: https://dataspace.copernicus.eu/
 CDSE_USERNAME = os.getenv('CDSE_USERNAME', '')
 CDSE_PASSWORD = os.getenv('CDSE_PASSWORD', '')
+
+# GeoNames — suv manbalari (daryo, ko'l, kanal)
+# Bepul ro'yxat: https://www.geonames.org/login  → "Free Web Services" ni yoqing
+GEONAMES_USERNAME = os.getenv('GEONAMES_USERNAME', '')

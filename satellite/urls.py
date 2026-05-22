@@ -21,4 +21,11 @@ urlpatterns = [
     path('api/satellite/fields/',                   views.FieldListCreateView.as_view()),
     path('api/satellite/fields/<int:pk>/',          views.FieldDetailView.as_view()),
     path('api/satellite/fields/<int:pk>/analyses/', views.FieldAnalysesView.as_view()),
+    path('api/satellite/fields/<int:pk>/crop-images/', views.FieldCropImagesView.as_view()),
+
+    # Mahsulot rasmi tahlili
+    path('api/satellite/crop-images/analyze/',      views.CropImageAnalyzeView.as_view()),
+    path('api/satellite/crop-images/history/',      views.CropImageHistoryView.as_view()),
+    path('api/satellite/crop-images/<int:pk>/',     views.CropImageDetailView.as_view()),
+
 ]

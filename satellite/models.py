@@ -17,8 +17,6 @@ class Field(models.Model):
     center_lat      = models.FloatField(verbose_name="Markaz kenglik")
     center_lng      = models.FloatField(verbose_name="Markaz uzunlik")
     area_ha         = models.FloatField(null=True, blank=True, verbose_name="Maydon (ha)")
-    last_irrigation = models.DateField(null=True, blank=True, verbose_name="So'nggi sug'orish")
-    water_cycle     = models.PositiveSmallIntegerField(default=7, verbose_name="Sug'orish davri (kun)")
     notes           = models.TextField(blank=True, verbose_name="Izoh")
 
     class Meta:
@@ -86,3 +84,45 @@ class AnalysisResult(models.Model):
         if v >= 0.3:  return "O'rtacha"
         if v >= 0.1:  return "Siyrak"
         return "Quruq/beton"
+
+
+class CropImage(models.Model):
+    """Mahsulot rasmlari va ularning tahlili"""
+    user          = models.ForeignKey(
+        User, null=True, blank=True,
+        on_delete=models.CASCADE,
+        related_name='crop_images',
+        verbose_name="Foydalanuvchi",
+    )
+    field         = models.ForeignKey(
+        Field,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='crop_images',
+        verbose_name="Dala",
+    )
+    created_at    = models.DateTimeField(auto_now_add=True, verbose_name="Yuklangan vaqti")
+    image         = models.ImageField(upload_to='crop_images/', verbose_name="Rasm")
+    
+    # Tahlil natijalari
+    health_status = models.CharField(
+        max_length=50, blank=True,
+        choices=[
+            ('healthy', 'Sog\'lig\'i yaxshi'),
+            ('moderate', 'O\'rtacha'),
+            ('poor', 'Yomon'),
+            ('critical', 'Juda yomon'),
+        ],
+        verbose_name="Sog\'lig\'i holati"
+    )
+    diseases      = models.JSONField(default=list, verbose_name="Aniqlab olingan kasalliklar")
+    analysis      = models.JSONField(default=dict, verbose_name="Batafsil tahlil")
+    confidence    = models.FloatField(default=0.0, verbose_name="Ishonch darajasi (0-1)")
+    
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Mahsulot rasmi"
+        verbose_name_plural = "Mahsulot rasmlari"
+
+    def __str__(self):
+        return f"Rasm {self.created_at.strftime('%Y-%m-%d %H:%M')} — {self.health_status}"

@@ -1,21 +1,25 @@
 from statistics import mean
+import os
 
 from django.conf import settings
 from django.contrib.auth import authenticate, login, logout
 from django.shortcuts import render
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.parsers import MultiPartParser, FormParser
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
-from .models import Field, AnalysisResult
+from .models import Field, AnalysisResult, CropImage
 from .serializers import (
     RegisterSerializer, LoginSerializer, UserSerializer,
     FieldSerializer, FieldMiniSerializer, FieldWriteSerializer,
     AnalysisListSerializer, AnalysisDetailSerializer,
+    CropImageListSerializer, CropImageDetailSerializer,
 )
-from .services import meteo, ai_service, satellite_ndvi, agro_ndvi
+from .services import meteo, ai_service, satellite_ndvi, agro_ndvi, crop_disease
 from .services import soil_grids
+from .services import water_sources as water_svc
 from .services.ndvi import enrich_monthly
 
 
@@ -50,19 +54,6 @@ _analyze_request = openapi.Schema(
             type=openapi.TYPE_STRING,
             description='Ekin turi yoki dala nomi',
             example='Pomidor',
-        ),
-        'last_irrigation': openapi.Schema(
-            type=openapi.TYPE_STRING,
-            format='date',
-            description="So'nggi sug'orish sanasi (YYYY-MM-DD)",
-            example='2026-05-10',
-            nullable=True,
-        ),
-        'water_cycle': openapi.Schema(
-            type=openapi.TYPE_INTEGER,
-            description="Sug'orish davri (kun)",
-            example=7,
-            default=7,
         ),
     },
 )
@@ -172,6 +163,44 @@ _analyze_response = openapi.Schema(
         'weather':  _weather_data,
         'analysis': _ai_analysis,
         'source':   openapi.Schema(type=openapi.TYPE_STRING, description='Foydalanilgan ma\'lumot manbalari', example='Sentinel-2 NDVI (13/13 oy) + SoilGrids + Open-Meteo ERA5 + Groq LLaMA'),
+        'water': openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            description='10 km radius ichidagi suv manbalari',
+            properties={
+                'summary': openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'closest_name':       openapi.Schema(type=openapi.TYPE_STRING, example='Chirchiq daryosi'),
+                        'closest_type_uz':    openapi.Schema(type=openapi.TYPE_STRING, example='Daryo'),
+                        'closest_dist_km':    openapi.Schema(type=openapi.TYPE_NUMBER, example=2.4),
+                        'closest_dist_text':  openapi.Schema(type=openapi.TYPE_STRING, example='2.4 km'),
+                        'closest_direction':  openapi.Schema(type=openapi.TYPE_STRING, example='Shimoli-G\'arb'),
+                        'irrigation_source':  openapi.Schema(type=openapi.TYPE_OBJECT, nullable=True),
+                        'total_found':        openapi.Schema(type=openapi.TYPE_INTEGER, example=5),
+                        'plain_text':         openapi.Schema(type=openapi.TYPE_STRING,
+                            example="Eng yaqin suv manbai: Chirchiq daryosi — 2.4 km Shimoli-G'arb tomonda. Sug'orish uchun qulay."),
+                    },
+                ),
+                'sources': openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    description='Masofaga ko\'ra saralangan suv manbalari ro\'yxati',
+                    items=openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'name':           openapi.Schema(type=openapi.TYPE_STRING, example='Chirchiq daryosi'),
+                            'type':           openapi.Schema(type=openapi.TYPE_STRING, example='river'),
+                            'type_uz':        openapi.Schema(type=openapi.TYPE_STRING, example='Daryo'),
+                            'distance_km':    openapi.Schema(type=openapi.TYPE_NUMBER, example=2.4),
+                            'distance_text':  openapi.Schema(type=openapi.TYPE_STRING, example='2.4 km'),
+                            'direction':      openapi.Schema(type=openapi.TYPE_STRING, example="Shimoli-G'arb"),
+                            'irrigation_ok':  openapi.Schema(type=openapi.TYPE_BOOLEAN, example=True),
+                            'lat':            openapi.Schema(type=openapi.TYPE_NUMBER, example=41.3012),
+                            'lng':            openapi.Schema(type=openapi.TYPE_NUMBER, example=69.2187),
+                        },
+                    ),
+                ),
+            },
+        ),
         'saved_id': openapi.Schema(type=openapi.TYPE_INTEGER, description='Saqlangan tahlil ID', example=7),
         'field_id': openapi.Schema(type=openapi.TYPE_INTEGER, description='Yaratilgan dala ID', example=3),
     },
@@ -327,8 +356,6 @@ class SatelliteAnalyzeView(APIView):
         coords          = request.data.get("coordinates", [])
         area_ha         = request.data.get("area_ha")
         name            = request.data.get("name", "").strip()
-        last_irrigation = request.data.get("last_irrigation")   # "YYYY-MM-DD" yoki None
-        water_cycle     = request.data.get("water_cycle", 7)
 
         if not coords:
             return Response({"error": "Koordinatalar kiritilmagan"}, status=400)
@@ -379,6 +406,14 @@ class SatelliteAnalyzeView(APIView):
         avg_wind   = round(mean(_winds),  1) if _winds  else 0.0
         avg_humid  = round(mean(_humids), 1) if _humids else 0.0
 
+        # Suv manbalari — AI dan oldin (AI kontekstiga ham kiradi)
+        try:
+            water_list    = water_svc.fetch_water_sources(lat, lng, radius_km=10)
+            water_summary = water_svc.summarize(water_list)
+        except Exception:
+            water_list    = []
+            water_summary = {"plain_text": "Suv manbai ma'lumoti olinmadi", "total_found": 0}
+
         ai_ctx = {
             "joylashuv":         {"lat": round(lat, 4), "lng": round(lng, 4), "maydon_ha": area_ha},
             "joriy_ndvi":        cur_ndvi,
@@ -394,6 +429,7 @@ class SatelliteAnalyzeView(APIView):
             "ortacha_namlik":    avg_humid,
             "max_ndvi":          max((m["ndvi"] for m in monthly), default=0.3),
             "min_ndvi":          min((m["ndvi"] for m in monthly), default=0.0),
+            "suv_manbalari":     water_summary,
         }
 
         try:
@@ -430,6 +466,10 @@ class SatelliteAnalyzeView(APIView):
             "soil":      soil,
             "weather":   weather,
             "analysis":  analysis,
+            "water": {
+                "summary": water_summary,
+                "sources": water_list,
+            },
             "source":    _build_source(monthly),
         }
 
@@ -444,8 +484,6 @@ class SatelliteAnalyzeView(APIView):
             center_lat=round(lat, 4),
             center_lng=round(lng, 4),
             area_ha=area_ha,
-            last_irrigation=last_irrigation or None,
-            water_cycle=int(water_cycle) if water_cycle else 7,
         )
 
         obj = AnalysisResult.objects.create(
@@ -460,11 +498,11 @@ class SatelliteAnalyzeView(APIView):
             ndvi_change=ndvi_chg,
             ndwi_current=cur_ndwi,
             drought_index=di,
-            ndvi_monthly=monthly,
-            soil_data=soil,
-            soil_properties=soil_props or {},
-            weather_data=weather,
-            ai_analysis=analysis,
+            ndvi_monthly=_sanitize(monthly),
+            soil_data=_sanitize(soil),
+            soil_properties=_sanitize(soil_props or {}),
+            weather_data=_sanitize(weather),
+            ai_analysis=_sanitize(analysis),
         )
 
         payload["saved_id"] = obj.pk
@@ -603,8 +641,6 @@ _field_write_body = openapi.Schema(
         'center_lat': openapi.Schema(type=openapi.TYPE_NUMBER, description="Markaz kenglik", example=41.2995),
         'center_lng': openapi.Schema(type=openapi.TYPE_NUMBER, description="Markaz uzunlik", example=69.2401),
         'area_ha':    openapi.Schema(type=openapi.TYPE_NUMBER, description="Maydon (gektarda)", example=0.5, nullable=True),
-        'last_irrigation': openapi.Schema(type=openapi.TYPE_STRING, format='date', description="So'nggi sug'orish sanasi", example="2026-05-10", nullable=True),
-        'water_cycle': openapi.Schema(type=openapi.TYPE_INTEGER, description="Sug'orish davri (kun)", example=7),
         'notes':       openapi.Schema(type=openapi.TYPE_STRING, description="Qo'shimcha izoh", example=""),
     },
 )
@@ -622,8 +658,6 @@ _field_response = openapi.Schema(
         'center_lng':     openapi.Schema(type=openapi.TYPE_NUMBER, example=69.2401),
         'area_ha':        openapi.Schema(type=openapi.TYPE_NUMBER, example=0.5, nullable=True),
         'area_sotix':     openapi.Schema(type=openapi.TYPE_NUMBER, example=50.0, nullable=True),
-        'last_irrigation':openapi.Schema(type=openapi.TYPE_STRING, format='date', example="2026-05-10", nullable=True),
-        'water_cycle':    openapi.Schema(type=openapi.TYPE_INTEGER, example=7),
         'notes':          openapi.Schema(type=openapi.TYPE_STRING, example=""),
     },
 )
@@ -932,3 +966,270 @@ class MeView(APIView):
         if not u:
             return Response({"authenticated": False, "user": None})
         return Response({"authenticated": True, "user": UserSerializer(u).data})
+
+
+
+
+# ── Crop Image Analysis ────────────────────────────────────────────────────────
+
+_crop_image_response = openapi.Schema(
+    type=openapi.TYPE_OBJECT,
+    properties={
+        'id':             openapi.Schema(type=openapi.TYPE_INTEGER, example=1),
+        'created_at':     openapi.Schema(type=openapi.TYPE_STRING, format='date-time'),
+        'field':          FieldMiniSerializer().child if hasattr(FieldMiniSerializer(), 'child') else _latlng,
+        'health_status':  openapi.Schema(type=openapi.TYPE_STRING, example='healthy', description='healthy|moderate|poor|critical'),
+        'confidence':     openapi.Schema(type=openapi.TYPE_NUMBER, example=0.85, description='Ishonch darajasi (0-1)'),
+        'diseases':       openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'name':       openapi.Schema(type=openapi.TYPE_STRING, example='Fitoroftora'),
+                'symptoms':   openapi.Schema(type=openapi.TYPE_STRING),
+                'severity':   openapi.Schema(type=openapi.TYPE_STRING),
+                'treatment':  openapi.Schema(type=openapi.TYPE_STRING),
+                'confidence': openapi.Schema(type=openapi.TYPE_NUMBER),
+            },
+        )),
+        'analysis':       openapi.Schema(type=openapi.TYPE_OBJECT, description='Batafsil tahlil'),
+        'image':          openapi.Schema(type=openapi.TYPE_STRING, format='uri', description='Rasm URL'),
+    },
+)
+
+
+class CropImageAnalyzeView(APIView):
+    """
+    Mahsulot rasmi tahlili — Groq LLaMA 3.3 70B yordamida.
+
+    Foydalanuvchi rasmi yuboradi va dala ID'sini ko'rsatadi.
+    API rasm tahlil qiladi va kasalliklar, sog'lig'i holatini aniqlab qo'yadi.
+
+    **Ishlash vaqti:** 5–15 soniya (Groq API chaqiruvi tufayli)
+    """
+    
+    parser_classes = (MultiPartParser, FormParser)
+
+    @swagger_auto_schema(
+        operation_id='crop_image_analyze',
+        operation_summary='Mahsulot rasmi tahlili',
+        operation_description=(
+            'Yuklangan rasmdagi mahsulotni AI yordamida tahlil qiladi.\n\n'
+            'Sog\'lig\'i holati, kasalliklar, davolash usullari va tavsiyalarni qaytaradi.'
+        ),
+        manual_parameters=[
+            openapi.Parameter(
+                'image',
+                openapi.IN_FORM,
+                description='Rasm fayli (JPEG, PNG)',
+                type=openapi.TYPE_FILE,
+                required=True,
+            ),
+            openapi.Parameter(
+                'field',
+                openapi.IN_FORM,
+                description='Dala ID (ixtiyoriy)',
+                type=openapi.TYPE_INTEGER,
+                required=False,
+            ),
+        ],
+        responses={
+            201: openapi.Response('Tahlil muvaffaqiyatli yakunlandi', _crop_image_response),
+            400: openapi.Response('Rasm yuklangan emas', _error_response),
+            502: openapi.Response('Groq API xatosi', _error_response),
+        },
+        tags=['Mahsulot Tahlili'],
+    )
+    def post(self, request):
+        # Rasm faylini olish
+        image_file = request.FILES.get('image')
+        if not image_file:
+            return Response({"error": "Rasm fayli yuklangan emas"}, status=400)
+        
+        # Dala ID'sini olish (ixtiyoriy)
+        field_id = request.data.get('field')
+        field = None
+        if field_id:
+            try:
+                u = _user_or_none(request)
+                qs = Field.objects.filter(user=u) if u else Field.objects.none()
+                field = qs.get(pk=field_id)
+            except Field.DoesNotExist:
+                pass
+        
+        # Rasm vaqtiy saqlash
+        temp_dir = settings.MEDIA_ROOT / 'temp'
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        
+        user_id = request.user.id if request.user.is_authenticated else 'anon'
+        # Rasm nomini to'g'ri saqlash (UUID qo'shmaslik)
+        original_filename = image_file.name
+        temp_path = temp_dir / f"crop_{user_id}_{original_filename}"
+        
+        try:
+            # Rasmni saqlash
+            with open(temp_path, 'wb') as f:
+                for chunk in image_file.chunks():
+                    f.write(chunk)
+            
+            # Ekin turini olish (agar dala bo'lsa)
+            crop_name = field.crop if field else ""
+            
+            # Rasmi tahlil qilish (TensorFlow + Groq)
+            analysis_result = crop_disease.analyze_crop_image(str(temp_path), crop_name)
+            
+            # Rasm nomini to'g'ri saqlash (UUID qo'shmaslik)
+            # Django avtomatik UUID qo'shadi, shuning uchun original nomni saqlaymiz
+            crop_image = CropImage.objects.create(
+                user=_user_or_none(request),
+                field=field,
+                image=image_file,
+                health_status=analysis_result.get('health_status', 'unknown'),
+                diseases=analysis_result.get('diseases', []),
+                analysis=analysis_result.get('analysis', {}),
+                confidence=analysis_result.get('confidence', 0.0),
+            )
+            
+            return Response(
+                CropImageDetailSerializer(crop_image).data,
+                status=201
+            )
+        
+        except Exception as e:
+            print(f"Rasm tahlil xatosi: {e}")
+            import traceback
+            traceback.print_exc()
+            return Response(
+                {"error": f"Tahlil xatosi: {str(e)}"},
+                status=502
+            )
+        
+        finally:
+            # Vaqtiy faylni o'chirish
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except:
+                    pass
+
+
+class CropImageHistoryView(APIView):
+    """
+    Saqlangan mahsulot rasmlari tarixi.
+
+    So'nggi 50 ta rasmi tahlilini qaytaradi.
+    """
+
+    @swagger_auto_schema(
+        operation_id='crop_image_history',
+        operation_summary='Mahsulot rasmlari tarixi',
+        operation_description='So\'nggi 50 ta saqlangan rasm tahlillari.',
+        responses={
+            200: openapi.Response('Muvaffaqiyatli', openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'count': openapi.Schema(type=openapi.TYPE_INTEGER, example=12),
+                    'results': openapi.Schema(type=openapi.TYPE_ARRAY, items=_crop_image_response),
+                },
+            )),
+        },
+        tags=['Mahsulot Tahlili'],
+    )
+    def get(self, request):
+        u = _user_or_none(request)
+        qs = CropImage.objects.filter(user=u) if u else CropImage.objects.none()
+        return Response({
+            "count": qs.count(),
+            "results": CropImageListSerializer(qs[:50], many=True).data,
+        })
+
+
+class CropImageDetailView(APIView):
+    """
+    Bitta rasm tahlilining to'liq ma'lumotlari.
+
+    **GET** → barcha maydonlar: sog'lig'i holati, kasalliklar, tavsiyalar.\n
+    **DELETE** → rasmi tahlilini o'chiradi.
+    """
+
+    def _get(self, pk, user):
+        try:
+            qs = CropImage.objects.filter(user=user) if user else CropImage.objects.none()
+            return qs.get(pk=pk)
+        except CropImage.DoesNotExist:
+            return None
+
+    @swagger_auto_schema(
+        operation_id='crop_image_detail',
+        operation_summary='Rasm tahlili batafsil',
+        operation_description='Berilgan ID bo\'yicha rasm tahlilining barcha ma\'lumotlari.',
+        responses={
+            200: openapi.Response('Muvaffaqiyatli', _crop_image_response),
+            404: openapi.Response('Topilmadi', _error_response),
+        },
+        tags=['Mahsulot Tahlili'],
+    )
+    def get(self, request, pk):
+        obj = self._get(pk, _user_or_none(request))
+        if not obj:
+            return Response({"error": "Rasm tahlili topilmadi"}, status=404)
+        return Response(CropImageDetailSerializer(obj).data)
+
+    @swagger_auto_schema(
+        operation_id='crop_image_delete',
+        operation_summary='Rasm tahlilini o\'chirish',
+        operation_description='Berilgan ID bo\'yicha rasm tahlilini o\'chiradi.',
+        responses={
+            200: openapi.Response('O\'chirildi', openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={'ok': openapi.Schema(type=openapi.TYPE_BOOLEAN, example=True)},
+            )),
+            404: openapi.Response('Topilmadi', _error_response),
+        },
+        tags=['Mahsulot Tahlili'],
+    )
+    def delete(self, request, pk):
+        obj = self._get(pk, _user_or_none(request))
+        if not obj:
+            return Response({"error": "Rasm tahlili topilmadi"}, status=404)
+        obj.delete()
+        return Response({"ok": True})
+
+
+class FieldCropImagesView(APIView):
+    """
+    Bitta dalaga tegishli barcha mahsulot rasmlari.
+
+    **GET** `/api/satellite/fields/<pk>/crop-images/`
+    → o'sha dala uchun yuklangan barcha rasmlari tahlillarini qaytaradi.
+    """
+
+    @swagger_auto_schema(
+        operation_id='field_crop_images',
+        operation_summary='Dala mahsulot rasmlari',
+        operation_description='Berilgan dala ID\'si bo\'yicha barcha rasm tahlillari.',
+        responses={
+            200: openapi.Response('Muvaffaqiyatli', openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'field': FieldMiniSerializer().child if hasattr(FieldMiniSerializer(), 'child') else _latlng,
+                    'count': openapi.Schema(type=openapi.TYPE_INTEGER, example=5),
+                    'results': openapi.Schema(type=openapi.TYPE_ARRAY, items=_crop_image_response),
+                },
+            )),
+            404: openapi.Response('Topilmadi', _error_response),
+        },
+        tags=['Mahsulot Tahlili'],
+    )
+    def get(self, request, pk):
+        u = _user_or_none(request)
+        try:
+            qs_f = Field.objects.filter(user=u) if u else Field.objects.none()
+            field = qs_f.get(pk=pk)
+        except Field.DoesNotExist:
+            return Response({"error": "Dala topilmadi"}, status=404)
+
+        qs = field.crop_images.filter(user=u) if u else field.crop_images.none()
+        return Response({
+            "field": FieldMiniSerializer(field).data,
+            "count": qs.count(),
+            "results": CropImageListSerializer(qs, many=True).data,
+        })

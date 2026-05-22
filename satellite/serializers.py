@@ -1,9 +1,7 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
-from .models import Field, AnalysisResult
+from .models import Field, AnalysisResult, CropImage
 
-
-# ── Auth serializers ──────────────────────────────────────────────────────────
 
 class RegisterSerializer(serializers.Serializer):
     username   = serializers.CharField(max_length=150)
@@ -48,18 +46,17 @@ class FieldSerializer(serializers.ModelSerializer):
             'name', 'crop', 'coordinates',
             'center_lat', 'center_lng',
             'area_ha', 'area_sotix',
-            'last_irrigation', 'water_cycle', 'notes',
+            'notes',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'area_sotix']
 
 
 class FieldMiniSerializer(serializers.ModelSerializer):
-    """Tahlil ichiga embed qilinadigan yengil variant."""
     area_sotix = serializers.ReadOnlyField()
 
     class Meta:
         model  = Field
-        fields = ['id', 'name', 'crop', 'area_ha', 'area_sotix', 'last_irrigation', 'water_cycle']
+        fields = ['id', 'name', 'crop', 'area_ha', 'area_sotix']
 
 
 class FieldWriteSerializer(serializers.ModelSerializer):
@@ -68,12 +65,12 @@ class FieldWriteSerializer(serializers.ModelSerializer):
         fields = [
             'name', 'crop', 'coordinates',
             'center_lat', 'center_lng',
-            'area_ha', 'last_irrigation', 'water_cycle', 'notes',
+            'area_ha', 'notes',
         ]
 
     def validate_coordinates(self, value):
         if not isinstance(value, list) or len(value) < 3:
-            raise serializers.ValidationError("Kamida 3 ta koordinata bo'lishi kerak.")
+            raise serializers.ValidationError("Kamita 3 ta koordinata bo'lishi kerak.")
         for p in value:
             if not isinstance(p, dict) or 'lat' not in p or 'lng' not in p:
                 raise serializers.ValidationError("Har bir nuqtada 'lat' va 'lng' bo'lishi kerak.")
@@ -104,3 +101,31 @@ class AnalysisDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model  = AnalysisResult
         fields = '__all__'
+
+
+# ── CropImage serializers ─────────────────────────────────────────────────────
+
+class CropImageListSerializer(serializers.ModelSerializer):
+    field = FieldMiniSerializer(read_only=True)
+
+    class Meta:
+        model  = CropImage
+        fields = [
+            'id', 'created_at', 'field',
+            'health_status', 'confidence',
+            'image',
+        ]
+
+
+class CropImageDetailSerializer(serializers.ModelSerializer):
+    field = FieldMiniSerializer(read_only=True)
+
+    class Meta:
+        model  = CropImage
+        fields = '__all__'
+
+
+class CropImageUploadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = CropImage
+        fields = ['image', 'field']
